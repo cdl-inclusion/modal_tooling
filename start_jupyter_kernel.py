@@ -15,8 +15,8 @@
 # Adjust these
 #
 JUPYTER_PORT = 8888
-TIMEOUT = 3600 # seconds
-GPU_TYPE = 'T4' # choose according to: https://modal.com/pricing
+TIMEOUT = 6000 # seconds
+GPU_TYPE = 'L4' # choose according to: https://modal.com/pricing
 ###########################
 
 
@@ -37,15 +37,20 @@ image = (
         "libsndfile1",
         "libsndfile1-dev",
         "ffmpeg",
-        "pkg-config")
+        "pkg-config",
+	"build-essential",)
     .pip_install(
         "jupyter~=1.1.0",
         "numpy",
         "librosa",
         "soundfile",
         "audioread",
+        "datasets",
+        "matplotlib",
+        "evaluate",
         "huggingface_hub[hf_transfer]==0.26.2",        
         "torch",
+        "torchaudio",
         "ctranslate2",
         "faster_whisper",
         "transformers",
