@@ -1,6 +1,6 @@
 # Run a jupyter notebook kernel on Modal
 
-* install dependencies: `pip install -r requirements.txt`
+* install modal: `pip install modal`
 * make sure you have a Modal account setup (create and account on [Modal](http://modal.com) and set it up via `modal setup`)
 
 * launch the jupyter kernel on Modal first: `python start_jupyter_kernel.py`
