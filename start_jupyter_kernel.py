@@ -45,10 +45,10 @@ image = (
         "librosa",
         "soundfile",
         "audioread",
-        "datasets",
+        "datasets[audio]==3.6.0", # use 3.6.0 as latest version (4.0.0) has breaking changes
         "matplotlib",
         "evaluate",
-        "huggingface_hub[hf_transfer]==0.26.2",        
+        "huggingface_hub",
         "torch",
         "torchaudio",
         "ctranslate2",
