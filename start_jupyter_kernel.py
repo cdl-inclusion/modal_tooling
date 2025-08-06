@@ -15,8 +15,8 @@
 # Adjust these
 #
 JUPYTER_PORT = 8888
-TIMEOUT = 6000 # seconds
-GPU_TYPE = 'L4' # choose according to: https://modal.com/pricing
+TIMEOUT = 7200 # seconds
+GPU_TYPE = 'A100' # choose according to: https://modal.com/pricing
 ###########################
 
 
@@ -42,12 +42,14 @@ image = (
     .pip_install(
         "jupyter~=1.1.0",
         "numpy",
+	"itables",
         "librosa",
         "soundfile",
         "audioread",
         "datasets[audio]==3.6.0", # use 3.6.0 as latest version (4.0.0) has breaking changes
         "matplotlib",
         "evaluate",
+	"jiwer",
         "huggingface_hub",
         "torch",
         "torchaudio",
