@@ -15,8 +15,8 @@
 # Adjust these
 #
 JUPYTER_PORT = 8888
-TIMEOUT = 7200 # seconds
-GPU_TYPE = 'A100' # choose according to: https://modal.com/pricing
+TIMEOUT = 3600 # seconds
+GPU_TYPE = 'L4' # choose according to: https://modal.com/pricing
 ###########################
 
 
