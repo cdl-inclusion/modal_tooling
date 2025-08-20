@@ -15,8 +15,8 @@
 # Adjust these
 #
 JUPYTER_PORT = 8888
-TIMEOUT = 3600 # seconds
-GPU_TYPE = 'L4' # choose according to: https://modal.com/pricing
+TIMEOUT = 6000 # seconds
+GPU_TYPE = 'l4' # choose according to: https://modal.com/pricing
 ###########################
 
 
@@ -40,6 +40,7 @@ image = (
         "pkg-config",
 	"build-essential",)
     .pip_install(
+	"accelerate>=0.26.0",
         "jupyter~=1.1.0",
         "numpy",
 	"itables",
@@ -55,7 +56,8 @@ image = (
         "torchaudio",
         "ctranslate2",
         "faster_whisper",
-        "transformers",
+        "transformers==4.52.0", # to avoid some issues with the latest version as discussed here: https://huggingface.co/openai/whisper-large-v3/discussions/201
+	"tensorboard"
     )
 )
 
