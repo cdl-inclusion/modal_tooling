@@ -10,13 +10,22 @@
 #
 # then see sandbox dashboard:
 # https://modal.com/sandboxes/personalizedmodels/main
+#
+# Will mount a volume for permanente storage called STORAGE_VOLUME_NAME.
+# If you adjust the storage name, ensure that other tools accessing the volume use the right name (eg tensorboard-server.py)
+#
+#
 
 ###########################
 # Adjust these
 #
 JUPYTER_PORT = 8888
-TIMEOUT = 6000 # seconds
+TIMEOUT = 3600 # seconds
+# TIMEOUT = 86400  # 24 hours maximum for Modal sandbox -- if training longer, consider using a Modal function!
+# -> when you use that, don't forget to stop after you're done!
 GPU_TYPE = 'l4' # choose according to: https://modal.com/pricing
+NUM_CPUS = 1 # for training want more than 1 (4 is good)
+MEM = 2048 # for training you need more (16384 is a good default)
 ###########################
 
 
@@ -27,7 +36,12 @@ import urllib.request
 
 import modal
 
-app = modal.App.lookup("jupyter_kernel", create_if_missing=True)
+STORAGE_VOLUME_NAME = "jupyter_kernel"
+
+app = modal.App.lookup(STORAGE_VOLUME_NAME, create_if_missing=True)
+
+volume = modal.Volume.from_name(STORAGE_VOLUME_NAME, create_if_missing=True)
+
 
 image = (
     modal.Image.from_registry("nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04", add_python="3.11")
@@ -87,6 +101,9 @@ with modal.enable_output():
         image=image,
         app=app,
         gpu=GPU_TYPE, 
+        cpu=NUM_CPUS,
+        memory=MEM,
+        volumes={f"/{STORAGE_VOLUME_NAME}": volume}
     )
 
 print(f"🏖️  Sandbox ID: {sandbox.object_id}")
