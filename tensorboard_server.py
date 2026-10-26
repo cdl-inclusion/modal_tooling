@@ -44,6 +44,9 @@ Container Lifecycle:
 
 import modal
 import os
+import shutil
+import threading
+import time
 
 # Configuration constants
 STORAGE_VOLUME_NAME = "jupyter_kernel"
@@ -61,28 +64,57 @@ tensorboard_image = modal.Image.debian_slim().pip_install([
     "protobuf",
 ])
 
-# Middleware to reload volume data on requests
-class VolumeMiddleware:
-    def __init__(self, app, volume, logdir):
+# TensorBoard must NOT read directly from the volume mount: it keeps event files open,
+# and Modal refuses to reload a volume while files on it are open -> logs never update.
+# Instead we mirror the event files to local disk and let TensorBoard read the mirror.
+MIRROR_DIR = "/tmp/tb_mirror"
+RELOAD_MIN_INTERVAL = 10  # seconds; each page load triggers ~30 requests, don't reload on every one
+
+_sync_lock = threading.Lock()
+_last_reload = 0.0
+
+
+def sync_logdir(logdir_param):
+    """Reload the volume (throttled) and append new event-file bytes to the local mirror."""
+    global _last_reload
+    src_root = os.path.join(LOGDIR, logdir_param)
+    dst_root = os.path.join(MIRROR_DIR, logdir_param.lstrip("/"))
+    with _sync_lock:
+        if time.time() - _last_reload >= RELOAD_MIN_INTERVAL:
+            try:
+                volume.reload()
+            except Exception as e:
+                print(f"Volume reload failed: {e}")
+            _last_reload = time.time()
+
+        if not os.path.exists(src_root):
+            print(f"WARNING: Directory {src_root} does not exist!")
+            return dst_root
+        for dirpath, _, filenames in os.walk(src_root):
+            for name in filenames:
+                if "tfevents" not in name:
+                    continue  # skip checkpoints etc.
+                src = os.path.join(dirpath, name)
+                dst = os.path.join(dst_root, os.path.relpath(src, src_root))
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                # Event files are append-only: copy only the new tail so TensorBoard's
+                # open file handles stay valid and it picks up the new records.
+                have = os.path.getsize(dst) if os.path.exists(dst) else 0
+                if os.path.getsize(src) <= have:
+                    continue
+                with open(src, "rb") as fsrc, open(dst, "ab") as fdst:
+                    fsrc.seek(have)
+                    shutil.copyfileobj(fsrc, fdst)
+    return dst_root
+
+
+class SyncMiddleware:
+    def __init__(self, app, logdir_param):
         self.app = app
-        self.volume = volume
-        self.logdir = logdir
+        self.logdir_param = logdir_param
 
     def __call__(self, environ, start_response):
-        # Try to reload volume, but don't fail if files are in use
-        try:
-            print(f"Attempting to reload volume for {self.logdir}...")
-            self.volume.reload()
-            print(f"Volume reload successful for {self.logdir}")
-        except RuntimeError as e:
-            if "open files preventing" in str(e):
-                print(f"Volume reload skipped (files in use) for {self.logdir}: {str(e)[:100]}...")
-                pass
-            else:
-                print(f"Volume reload failed with unexpected error for {self.logdir}: {e}")
-                raise
-        except Exception as e:
-            print(f"Volume reload failed for {self.logdir}: {e}")
+        sync_logdir(self.logdir_param)
         return self.app(environ, start_response)
 
 @app.function(
@@ -102,24 +134,12 @@ def tensorboard_app():
     
     def get_tensorboard_app(logdir_param):
         if logdir_param not in tensorboard_cache:
-            full_logdir = os.path.join(LOGDIR, logdir_param)
-            print(f"Creating new TensorBoard instance for logdir: {full_logdir}")
-            
-            # Check if directory exists and what's in it
-            if os.path.exists(full_logdir):
-                try:
-                    files = os.listdir(full_logdir)
-                    print(f"Directory {full_logdir} contains: {files}")
-                    # Find event files
-                    event_files = [f for f in files if 'tfevents' in f.lower()]
-                    print(f"Event files found: {event_files}")
-                except Exception as e:
-                    print(f"Error listing directory {full_logdir}: {e}")
-            else:
-                print(f"WARNING: Directory {full_logdir} does not exist!")
-            
+            mirror_logdir = sync_logdir(logdir_param)
+            print(f"Creating new TensorBoard instance for logdir: {logdir_param} (mirrored at {mirror_logdir})")
+            os.makedirs(mirror_logdir, exist_ok=True)
+
             board = tensorboard.program.TensorBoard()
-            board.configure(logdir=full_logdir)
+            board.configure(logdir=mirror_logdir, reload_interval=5)
             (data_provider, deprecated_multiplexer) = board._make_data_provider()
             wsgi_app = tensorboard.backend.application.TensorBoardWSGIApp(
                 board.flags,
@@ -127,7 +147,7 @@ def tensorboard_app():
                 data_provider,
                 board.assets_zip_provider,
                 deprecated_multiplexer,
-                experimental_middlewares=[lambda app: VolumeMiddleware(app, volume, logdir_param)],
+                experimental_middlewares=[lambda app, p=logdir_param: SyncMiddleware(app, p)],
             )
             tensorboard_cache[logdir_param] = wsgi_app
         return tensorboard_cache[logdir_param]
